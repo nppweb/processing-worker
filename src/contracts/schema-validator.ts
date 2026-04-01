@@ -1,7 +1,8 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import Ajv from "ajv";
+import Ajv2020 from "ajv/dist/2020";
 import addFormats from "ajv-formats";
+import { PoisonMessageError } from "../errors";
 import type { NormalizedSourceEvent, RawSourceEvent } from "../types";
 
 export function createSchemaValidators(sharedContractsDir: string) {
@@ -12,7 +13,7 @@ export function createSchemaValidators(sharedContractsDir: string) {
     readFileSync(join(sharedContractsDir, "events", "source-normalized.v1.json"), "utf-8")
   );
 
-  const ajv = new Ajv({ allErrors: true });
+  const ajv = new Ajv2020({ allErrors: true });
   addFormats(ajv);
   const rawValidate = ajv.compile<RawSourceEvent>(rawSchema);
   const normalizedValidate = ajv.compile<NormalizedSourceEvent>(normalizedSchema);
@@ -22,7 +23,7 @@ export function createSchemaValidators(sharedContractsDir: string) {
       if (rawValidate(event)) {
         return;
       }
-      throw new Error(
+      throw new PoisonMessageError(
         `Raw schema validation failed: ${(rawValidate.errors ?? [])
           .map((err) => `${err.instancePath || "/"} ${err.message}`)
           .join("; ")}`
@@ -32,7 +33,7 @@ export function createSchemaValidators(sharedContractsDir: string) {
       if (normalizedValidate(event)) {
         return;
       }
-      throw new Error(
+      throw new PoisonMessageError(
         `Normalized schema validation failed: ${(normalizedValidate.errors ?? [])
           .map((err) => `${err.instancePath || "/"} ${err.message}`)
           .join("; ")}`

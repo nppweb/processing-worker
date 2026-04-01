@@ -3,7 +3,9 @@ import { z } from "zod";
 
 const envSchema = z.object({
   RABBITMQ_URL: z.string().default("amqp://app:app@localhost:5672"),
-  API_GRAPHQL_URL: z.string().default("http://localhost:3000/graphql"),
+  API_BASE_URL: z.string().url().optional(),
+  API_GRAPHQL_URL: z.string().url().optional(),
+  GRAPHQL_PATH: z.string().default("/graphql"),
   API_INGEST_TOKEN: z.string().default("replace_me_ingest_token"),
   QUEUE_RAW_EVENT: z.string().default("source.raw.v1"),
   QUEUE_RETRY_EVENT: z.string().default("source.raw.retry.v1"),
@@ -15,4 +17,15 @@ const envSchema = z.object({
   PREFETCH: z.coerce.number().int().positive().default(10)
 });
 
-export const config = envSchema.parse(process.env);
+const parsedEnv = envSchema.parse(process.env);
+
+const apiBaseUrl = parsedEnv.API_BASE_URL ?? "http://localhost:3000";
+const graphqlPath = parsedEnv.GRAPHQL_PATH.startsWith("/")
+  ? parsedEnv.GRAPHQL_PATH
+  : `/${parsedEnv.GRAPHQL_PATH}`;
+
+export const config = {
+  ...parsedEnv,
+  API_BASE_URL: apiBaseUrl,
+  API_GRAPHQL_URL: parsedEnv.API_GRAPHQL_URL ?? new URL(graphqlPath, apiBaseUrl).toString()
+};
