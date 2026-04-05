@@ -13,7 +13,7 @@ export function normalizeRawEvent(input: RawSourceEvent): NormalizedSourceEvent 
   if (input.source === "fedresurs") {
     return normalizeFedresursRawEvent(input);
   }
-  if (input.source === "eis") {
+  if (isEisLikeSource(input.source)) {
     return normalizeEisRawEvent(input);
   }
   if (input.source === "rnp") {
@@ -86,7 +86,7 @@ function normalizeEisRawEvent(input: RawSourceEvent): NormalizedSourceEvent {
     title,
     description: toStringOrUndefined(raw.description),
     customer: toStringOrUndefined(raw.customerName),
-    supplier: undefined,
+    supplier: toStringOrUndefined(raw.supplierName),
     amount: toNumberOrUndefined(raw.initialPrice),
     currency: toStringOrUndefined(raw.currency) ?? "RUB",
     publishedAt: toStringOrUndefined(raw.publishedAt) ?? input.collectedAt,
@@ -96,12 +96,13 @@ function normalizeEisRawEvent(input: RawSourceEvent): NormalizedSourceEvent {
     status: normalizeEisStatus(toStringOrUndefined(raw.status)),
     rawRef: toStringOrUndefined(raw.rawArtifactUrl) ?? sourceUrl,
     sourceSpecificData: {
-      sourceType: "procurement",
-      portalName: "ЕИС / zakupki.gov.ru",
+      sourceType: toStringOrUndefined(raw.sourceType) ?? "procurement",
+      portalName: toStringOrUndefined(raw.portalName) ?? resolveEisPortalName(input.source),
       matchedQuery: toStringOrUndefined(raw.matchedQuery),
       targetStationName: toStringOrUndefined(raw.targetStationName),
       region: toStringOrUndefined(raw.region),
       customerName: toStringOrUndefined(raw.customerName),
+      supplierName: toStringOrUndefined(raw.supplierName),
       collectedAt: toStringOrUndefined(raw.collectedAt) ?? input.collectedAt
     },
     rawEvent: {
@@ -112,6 +113,22 @@ function normalizeEisRawEvent(input: RawSourceEvent): NormalizedSourceEvent {
       artifacts: input.artifacts
     }
   };
+}
+
+function isEisLikeSource(source: string): boolean {
+  return source === "eis" || source === "eis_contracts" || source === "eis_contracts_223";
+}
+
+function resolveEisPortalName(source: string): string {
+  if (source === "eis_contracts") {
+    return "ЕИС / реестр контрактов 44-ФЗ";
+  }
+
+  if (source === "eis_contracts_223") {
+    return "ЕИС / реестр договоров 223-ФЗ";
+  }
+
+  return "ЕИС / zakupki.gov.ru";
 }
 
 function normalizeEasuzRawEvent(input: RawSourceEvent): NormalizedSourceEvent {

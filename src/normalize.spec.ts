@@ -112,6 +112,46 @@ describe("normalizeRawEvent", () => {
     });
   });
 
+  it("normalizes EIS contract sources through the same procurement pipeline", () => {
+    const input: RawSourceEvent = {
+      eventId: "evt-eis-contract-1",
+      runKey: "eis-contracts-run",
+      source: "eis_contracts_223",
+      collectedAt: "2026-04-05T18:00:00.000Z",
+      url: "https://zakupki.gov.ru/epz/contractfz223/card/contract-info.html?id=25224230",
+      payloadVersion: "v1",
+      artifacts: [],
+      raw: {
+        externalId: "57721632827260015610000",
+        externalUrl: "https://zakupki.gov.ru/epz/contractfz223/card/contract-info.html?id=25224230",
+        title: "Услуги связи для Ленинградской атомной станции",
+        customerName: "АО Концерн Росэнергоатом",
+        supplierName: "ПАО Ростелеком",
+        portalName: "ЕИС / реестр договоров 223-ФЗ",
+        sourceType: "contract",
+        matchedQuery: "Ленинградская атомная станция",
+        targetStationName: "Ленинградская атомная станция",
+        publishedAt: "2026-03-31T00:00:00+03:00",
+        initialPrice: 10781504.7,
+        currency: "RUB"
+      }
+    };
+
+    const normalized = normalizeRawEvent(input);
+
+    expect(normalized.externalId).toBe("57721632827260015610000");
+    expect(normalized.customer).toBe("АО Концерн Росэнергоатом");
+    expect(normalized.supplier).toBe("ПАО Ростелеком");
+    expect(normalized.amount).toBe(10781504.7);
+    expect(normalized.sourceSpecificData).toMatchObject({
+      sourceType: "contract",
+      portalName: "ЕИС / реестр договоров 223-ФЗ",
+      matchedQuery: "Ленинградская атомная станция",
+      targetStationName: "Ленинградская атомная станция",
+      supplierName: "ПАО Ростелеком"
+    });
+  });
+
   it("normalizes rnp payload using registry-specific fields", () => {
     const input: RawSourceEvent = {
       eventId: "evt-4",
