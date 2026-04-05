@@ -25,6 +25,8 @@ describe("normalizeRawEvent", () => {
           "https://zakupki.gov.ru/epz/order/notice/ea44/view/common-info.html?regNumber=0373100137626000001",
         title: "Поставка серверного оборудования",
         customerName: "ФГБУ «Центр цифрового развития»",
+        matchedQuery: "Ленинградская атомная станция",
+        targetStationName: "Ленинградская атомная станция",
         status: "Подача заявок",
         publishedAt: "2026-04-01T10:15:00+03:00",
         applicationDeadline: "2026-04-10T09:00:00+03:00",
@@ -43,6 +45,12 @@ describe("normalizeRawEvent", () => {
     expect(normalized.deadlineAt).toBe("2026-04-10T09:00:00+03:00");
     expect(normalized.rawRef).toBe("http://minio:9000/artifacts/eis/eis-run/evt-3/notice.html");
     expect(normalized.status).toBe("ACTIVE");
+    expect(normalized.sourceSpecificData).toMatchObject({
+      portalName: "ЕИС / zakupki.gov.ru",
+      matchedQuery: "Ленинградская атомная станция",
+      targetStationName: "Ленинградская атомная станция",
+      customerName: "ФГБУ «Центр цифрового развития»"
+    });
   });
 
   it("normalizes easuz payload using procurement-specific fields", () => {

@@ -95,6 +95,15 @@ function normalizeEisRawEvent(input: RawSourceEvent): NormalizedSourceEvent {
     sourceUrl,
     status: normalizeEisStatus(toStringOrUndefined(raw.status)),
     rawRef: toStringOrUndefined(raw.rawArtifactUrl) ?? sourceUrl,
+    sourceSpecificData: {
+      sourceType: "procurement",
+      portalName: "ЕИС / zakupki.gov.ru",
+      matchedQuery: toStringOrUndefined(raw.matchedQuery),
+      targetStationName: toStringOrUndefined(raw.targetStationName),
+      region: toStringOrUndefined(raw.region),
+      customerName: toStringOrUndefined(raw.customerName),
+      collectedAt: toStringOrUndefined(raw.collectedAt) ?? input.collectedAt
+    },
     rawEvent: {
       eventId: input.eventId,
       runKey: input.runKey,
