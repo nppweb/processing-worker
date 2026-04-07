@@ -1,3 +1,4 @@
+import { resolveNppStationNameFromText } from "./npp-stations";
 import type { NormalizedSourceEvent, RawSourceEvent } from "./types";
 
 const ENTITY_BOILERPLATE_MARKERS = [
@@ -94,7 +95,7 @@ function normalizeEisRawEvent(input: RawSourceEvent): NormalizedSourceEvent {
   const supplierName = sanitizeEntityName(toStringOrUndefined(raw.supplierName));
   const targetStationName =
     toStringOrUndefined(raw.targetStationName) ??
-    resolveStationNameFromText([
+    resolveNppStationNameFromText([
       toStringOrUndefined(raw.title),
       toStringOrUndefined(raw.description),
       customerName,
@@ -738,57 +739,4 @@ function calculateProfileCompleteness(input: {
   const filled = fields.filter((item) => Boolean(item)).length;
 
   return Math.round((filled / fields.length) * 100);
-}
-
-function resolveStationNameFromText(values: Array<string | undefined>): string | undefined {
-  const haystack = values.filter(Boolean).join(" ").toLowerCase();
-
-  if (!haystack) {
-    return undefined;
-  }
-
-  const stations = [
-    {
-      canonical: "Балаковская атомная станция",
-      variants: ["балаковская атомная станция", "балаковская аэс", "балаковская аэс-авто"]
-    },
-    {
-      canonical: "Белоярская атомная станция",
-      variants: ["белоярская атомная станция", "белоярская аэс"]
-    },
-    {
-      canonical: "Билибинская атомная станция",
-      variants: ["билибинская атомная станция", "билибинская аэс"]
-    },
-    {
-      canonical: "Калининская атомная станция",
-      variants: ["калининская атомная станция", "калининская аэс", "калининская аэс-сервис"]
-    },
-    {
-      canonical: "Кольская атомная станция",
-      variants: ["кольская атомная станция", "кольская аэс"]
-    },
-    {
-      canonical: "Курская атомная станция",
-      variants: ["курская атомная станция", "курская аэс", "курская аэс-сервис"]
-    },
-    {
-      canonical: "Ленинградская атомная станция",
-      variants: ["ленинградская атомная станция", "ленинградская аэс", "ленинградская аэс-авто"]
-    },
-    {
-      canonical: "Нововоронежская атомная станция",
-      variants: ["нововоронежская атомная станция", "нововоронежская аэс"]
-    },
-    {
-      canonical: "Ростовская атомная станция",
-      variants: ["ростовская атомная станция", "ростовская аэс"]
-    },
-    {
-      canonical: "Смоленская атомная станция",
-      variants: ["смоленская атомная станция", "смоленская аэс", "смоленская аэс-сервис"]
-    }
-  ] as const;
-
-  return stations.find((station) => station.variants.some((variant) => haystack.includes(variant)))?.canonical;
 }
