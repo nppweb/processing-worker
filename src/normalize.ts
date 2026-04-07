@@ -1,5 +1,5 @@
 import { resolveNppStationNameFromText } from "./npp-stations";
-import type { NormalizedSourceEvent, RawSourceEvent } from "./types";
+import type { NormalizedSourceEvent, QuarantinedRawEvent, RawSourceEvent } from "./types";
 
 const ENTITY_BOILERPLATE_MARKERS = [
   "поделитесь мнением о качестве работы",
@@ -14,6 +14,19 @@ const ENTITY_BOILERPLATE_MARKERS = [
   "версия hotfix",
   "федеральное казначейство"
 ];
+const EIS_PLATFORM_DOMAIN_MARKERS = [
+  "sberbank-ast.ru",
+  "roseltorg.ru",
+  "etp.zakazrf.ru",
+  "rts-tender.ru",
+  "fabrikant.ru",
+  "gz.lot-online.ru",
+  "tektorg.ru",
+  "etpgpb.ru",
+  "astgoz.ru",
+  "etprf.ru"
+];
+const EIS_SUSPICIOUS_URL_MARKERS = ["/documents.html", "/printform/", "/print-form/"];
 
 export function normalizeRawEvent(input: RawSourceEvent): NormalizedSourceEvent {
   if (input.source === "easuz") {
@@ -79,13 +92,65 @@ export function normalizeRawEvent(input: RawSourceEvent): NormalizedSourceEvent 
   };
 }
 
+export function detectQuarantinableRawEvent(input: RawSourceEvent): QuarantinedRawEvent | null {
+  if (!isEisLikeSource(input.source)) {
+    return null;
+  }
+
+  const raw = input.raw;
+  const rawTitle = toStringOrUndefined(raw.title);
+  const rawDescription = toStringOrUndefined(raw.description);
+  const sourceUrl =
+    toStringOrUndefined(raw.externalUrl) ??
+    toStringOrUndefined(raw.sourcePageUrl) ??
+    input.url;
+  const textForInspection = [rawTitle, rawDescription, sourceUrl]
+    .filter((value): value is string => Boolean(value))
+    .join(" ")
+    .toLowerCase();
+  const hasBoilerplateText =
+    ENTITY_BOILERPLATE_MARKERS.some((marker) => textForInspection.includes(marker)) ||
+    EIS_PLATFORM_DOMAIN_MARKERS.some((marker) => textForInspection.includes(marker));
+  const hasSuspiciousSourceUrl = EIS_SUSPICIOUS_URL_MARKERS.some((marker) =>
+    sourceUrl.toLowerCase().includes(marker)
+  );
+
+  if (!hasBoilerplateText && !hasSuspiciousSourceUrl) {
+    return null;
+  }
+
+  const externalId =
+    toStringOrUndefined(raw.externalId) ??
+    toStringOrUndefined(raw.registrationNumber) ??
+    `${input.source}-${input.eventId}`;
+  const reasonParts = [
+    hasBoilerplateText ? "обнаружен платформенный boilerplate ЕИС" : undefined,
+    hasSuspiciousSourceUrl ? `подозрительный URL карточки: ${sourceUrl}` : undefined
+  ].filter((value): value is string => Boolean(value));
+
+  return {
+    source: input.source,
+    eventId: input.eventId,
+    runKey: input.runKey,
+    collectedAt: input.collectedAt,
+    sourceUrl,
+    payloadVersion: input.payloadVersion,
+    externalId,
+    quarantineReason: `EIS item quarantined: ${reasonParts.join("; ")}`,
+    rawPayload: raw,
+    artifacts: input.artifacts
+  };
+}
+
 function normalizeEisRawEvent(input: RawSourceEvent): NormalizedSourceEvent {
   const raw = input.raw;
   const externalId =
     toStringOrUndefined(raw.externalId) ??
     toStringOrUndefined(raw.registrationNumber) ??
     `${input.source}-${input.eventId}`;
-  const title = toStringOrUndefined(raw.title) ?? "Закупка ЕИС";
+  const title =
+    sanitizeEisPresentationText(toStringOrUndefined(raw.title), 400) ?? `Закупка ЕИС ${externalId}`;
+  const description = sanitizeEisPresentationText(toStringOrUndefined(raw.description), 4000);
   const sourceUrl =
     toStringOrUndefined(raw.externalUrl) ??
     toStringOrUndefined(raw.sourcePageUrl) ??
@@ -112,7 +177,7 @@ function normalizeEisRawEvent(input: RawSourceEvent): NormalizedSourceEvent {
     payloadVersion: "v1",
     externalId,
     title,
-    description: toStringOrUndefined(raw.description),
+    description,
     customer: customerName,
     supplier: supplierName,
     amount: toNumberOrUndefined(raw.initialPrice),
@@ -617,6 +682,35 @@ function sanitizeEntityName(value: string | undefined): string | undefined {
     cleaned.length > 220 ||
     urlMatches.length >= 3 ||
     hasBoilerplateMarker ||
+    normalized.includes("официальный сайт единой информационной системы") ||
+    normalized.includes("контрактной системе в сфере закупок")
+  ) {
+    return undefined;
+  }
+
+  return cleaned;
+}
+
+function sanitizeEisPresentationText(value: string | undefined, maxLength: number): string | undefined {
+  const cleaned = toStringOrUndefined(value)?.replace(/\s+/g, " ").trim();
+
+  if (!cleaned) {
+    return undefined;
+  }
+
+  const normalized = cleaned.toLowerCase();
+  const urlMatches = cleaned.match(/\b(?:https?:\/\/|www\.|[a-z0-9.-]+\.[a-z]{2,})/gi) ?? [];
+  const hasBoilerplateMarker = ENTITY_BOILERPLATE_MARKERS.some((marker) =>
+    normalized.includes(marker)
+  );
+  const hasPlatformNoise =
+    EIS_PLATFORM_DOMAIN_MARKERS.filter((marker) => normalized.includes(marker)).length >= 2;
+
+  if (
+    cleaned.length > maxLength ||
+    urlMatches.length >= 3 ||
+    hasBoilerplateMarker ||
+    hasPlatformNoise ||
     normalized.includes("официальный сайт единой информационной системы") ||
     normalized.includes("контрактной системе в сфере закупок")
   ) {

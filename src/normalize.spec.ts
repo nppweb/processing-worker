@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { normalizeRawEvent } from "./normalize";
+import { detectQuarantinableRawEvent, normalizeRawEvent } from "./normalize";
 import type { RawSourceEvent } from "./types";
 
 describe("normalizeRawEvent", () => {
@@ -51,6 +51,32 @@ describe("normalizeRawEvent", () => {
       targetStationName: "Ленинградская атомная станция",
       customerName: "ФГБУ «Центр цифрового развития»"
     });
+  });
+
+  it("replaces polluted EIS boilerplate title with a safe fallback", () => {
+    const input: RawSourceEvent = {
+      eventId: "evt-eis-boilerplate",
+      runKey: "eis-run",
+      source: "eis",
+      collectedAt: "2026-04-07T10:00:00.000Z",
+      url: "https://zakupki.gov.ru/epz/order/notice/notice223/documents.html?regNumber=32615886957",
+      payloadVersion: "v1",
+      artifacts: [],
+      raw: {
+        externalId: "32615886957",
+        externalUrl: "https://zakupki.gov.ru/epz/order/notice/notice223/documents.html?regNumber=32615886957",
+        title:
+          "Поделитесь мнением о качестве работы единой информационной системы Перейти к опросу Система торгов Сбербанк-АСТ SBERBANK-AST.RU Единая электронная торговая площадка ROSELTORG.RU Техническая поддержка Ваши идеи по улучшению сайта",
+        matchedQuery: "Балаковская атомная станция",
+        publishedAt: "2026-04-07T00:00:00+03:00"
+      }
+    };
+
+    const normalized = normalizeRawEvent(input);
+
+    expect(normalized.title).toBe("Закупка ЕИС 32615886957");
+    expect(normalized.description).toBeUndefined();
+    expect(normalized.customer).toBeUndefined();
   });
 
   it("normalizes easuz payload using procurement-specific fields", () => {
@@ -342,5 +368,58 @@ describe("normalizeRawEvent", () => {
     expect(normalized.startPrice).toBe(12500000);
     expect(normalized.lotInfo).toBe("Нежилое помещение, этаж 1, отдельный вход.");
     expect(normalized.status).toBe("ACTIVE");
+  });
+});
+
+describe("detectQuarantinableRawEvent", () => {
+  it("quarantines polluted EIS shell pages instead of publishing them", () => {
+    const input: RawSourceEvent = {
+      eventId: "evt-quarantine-1",
+      runKey: "eis-run",
+      source: "eis",
+      collectedAt: "2026-04-07T10:00:00.000Z",
+      url: "https://zakupki.gov.ru/epz/order/notice/notice223/documents.html?regNumber=32615886957",
+      payloadVersion: "v1",
+      artifacts: [],
+      raw: {
+        externalId: "32615886957",
+        externalUrl: "https://zakupki.gov.ru/epz/order/notice/notice223/documents.html?regNumber=32615886957",
+        title:
+          "Поделитесь мнением о качестве работы единой информационной системы Перейти к опросу Система торгов Сбербанк-АСТ SBERBANK-AST.RU Единая электронная торговая площадка ROSELTORG.RU",
+        description: "Техническая поддержка Ваши идеи по улучшению сайта"
+      }
+    };
+
+    const quarantined = detectQuarantinableRawEvent(input);
+
+    expect(quarantined).toMatchObject({
+      source: "eis",
+      eventId: "evt-quarantine-1",
+      externalId: "32615886957"
+    });
+    expect(quarantined?.quarantineReason).toContain("boilerplate");
+    expect(quarantined?.quarantineReason).toContain("documents.html");
+  });
+
+  it("does not quarantine a normal EIS common-info notice", () => {
+    const input: RawSourceEvent = {
+      eventId: "evt-quarantine-2",
+      runKey: "eis-run",
+      source: "eis",
+      collectedAt: "2026-04-07T10:05:00.000Z",
+      url: "https://zakupki.gov.ru/epz/order/notice/ea20/view/common-info.html?regNumber=0773100000326000001",
+      payloadVersion: "v1",
+      artifacts: [],
+      raw: {
+        externalId: "0773100000326000001",
+        externalUrl:
+          "https://zakupki.gov.ru/epz/order/notice/ea20/view/common-info.html?regNumber=0773100000326000001",
+        title:
+          "Выполнение работы по передаче на захоронение кондиционированных радиоактивных отходов",
+        description: "Закупка для нужд филиала концерна"
+      }
+    };
+
+    expect(detectQuarantinableRawEvent(input)).toBeNull();
   });
 });

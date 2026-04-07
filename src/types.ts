@@ -75,3 +75,16 @@ export type NormalizedSourceEvent = {
     artifacts: ArtifactRef[];
   };
 };
+
+export type QuarantinedRawEvent = {
+  source: string;
+  eventId: string;
+  runKey: string;
+  collectedAt: string;
+  sourceUrl: string;
+  payloadVersion: "v1";
+  externalId?: string;
+  quarantineReason: string;
+  rawPayload: Record<string, unknown>;
+  artifacts: ArtifactRef[];
+};

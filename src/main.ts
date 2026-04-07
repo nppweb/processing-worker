@@ -1,12 +1,12 @@
 import { setTimeout as delay } from "node:timers/promises";
 import type { ConsumeMessage } from "amqplib";
-import { sendToBackend } from "./backend-client";
+import { reportQuarantinedRawEvent, sendToBackend } from "./backend-client";
 import { config } from "./config";
 import { createSchemaValidators } from "./contracts/schema-validator";
 import { isPoisonMessageError, toErrorMessage } from "./errors";
 import { logger } from "./logger";
 import { QueueClient } from "./messaging/queue-client";
-import { normalizeRawEvent } from "./normalize";
+import { detectQuarantinableRawEvent, normalizeRawEvent } from "./normalize";
 import type { RawSourceEvent } from "./types";
 
 async function bootstrap(): Promise<void> {
@@ -46,6 +46,32 @@ async function bootstrap(): Promise<void> {
         { eventId: raw.eventId, source: raw.source, deliveryTag, attempt },
         "raw event validated"
       );
+
+      const quarantinedEvent = detectQuarantinableRawEvent(raw);
+      if (quarantinedEvent) {
+        await reportQuarantinedRawEvent(
+          config.API_GRAPHQL_URL,
+          config.API_INGEST_TOKEN,
+          quarantinedEvent
+        );
+        logger.warn(
+          {
+            eventId: raw.eventId,
+            externalId: quarantinedEvent.externalId,
+            source: raw.source,
+            deliveryTag,
+            attempt,
+            quarantineReason: quarantinedEvent.quarantineReason
+          },
+          "raw event quarantined before normalization"
+        );
+        queue.ack(message);
+        logger.info(
+          { eventId: raw.eventId, source: raw.source, externalId: quarantinedEvent.externalId, deliveryTag },
+          "message acknowledged after quarantine"
+        );
+        return;
+      }
 
       const normalized = normalizeRawEvent(raw);
       validators.validateNormalized(normalized);

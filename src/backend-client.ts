@@ -1,5 +1,5 @@
 import { PoisonMessageError, TransientMessageError, toErrorMessage } from "./errors";
-import type { NormalizedSourceEvent } from "./types";
+import type { NormalizedSourceEvent, QuarantinedRawEvent } from "./types";
 
 const INGEST_MUTATION = `
 mutation IngestNormalizedItem($input: IngestNormalizedItemInput!) {
@@ -111,6 +111,40 @@ export async function sendToBackend(
     }
 
     throw new TransientMessageError(message);
+  }
+}
+
+export async function reportQuarantinedRawEvent(
+  apiBaseUrl: string,
+  ingestToken: string,
+  event: QuarantinedRawEvent
+): Promise<void> {
+  let response: Response;
+
+  try {
+    response = await fetch(new URL("/api/internal/scraper/quarantine-events", apiBaseUrl), {
+      method: "POST",
+      signal: AbortSignal.timeout(10000),
+      headers: {
+        "content-type": "application/json",
+        "x-ingest-token": ingestToken
+      },
+      body: JSON.stringify(event)
+    });
+  } catch (error) {
+    throw new TransientMessageError(
+      `Backend quarantine API is unavailable at ${apiBaseUrl}: ${toErrorMessage(error)}`,
+      { cause: error }
+    );
+  }
+
+  if (!response.ok) {
+    const message = `Backend quarantine API responded with HTTP ${response.status}`;
+    if (response.status >= 500 || response.status === 429 || response.status === 408) {
+      throw new TransientMessageError(message);
+    }
+
+    throw new PoisonMessageError(message);
   }
 }
 
