@@ -1,5 +1,19 @@
 import type { NormalizedSourceEvent, RawSourceEvent } from "./types";
 
+const ENTITY_BOILERPLATE_MARKERS = [
+  "поделитесь мнением о качестве работы",
+  "единая информационная система в сфере закупок",
+  "официальные ресурсы",
+  "техническая поддержка",
+  "ваши идеи по улучшению сайта",
+  "отчет о посещаемости",
+  "карта сайта",
+  "часто задаваемые вопросы",
+  "новости поставщикам заказчикам органам контроля",
+  "версия hotfix",
+  "федеральное казначейство"
+];
+
 export function normalizeRawEvent(input: RawSourceEvent): NormalizedSourceEvent {
   if (input.source === "easuz") {
     return normalizeEasuzRawEvent(input);
@@ -76,13 +90,15 @@ function normalizeEisRawEvent(input: RawSourceEvent): NormalizedSourceEvent {
     toStringOrUndefined(raw.sourcePageUrl) ??
     input.url;
   const publishedAt = toStringOrUndefined(raw.publishedAt) ?? input.collectedAt;
+  const customerName = sanitizeEntityName(toStringOrUndefined(raw.customerName));
+  const supplierName = sanitizeEntityName(toStringOrUndefined(raw.supplierName));
   const targetStationName =
     toStringOrUndefined(raw.targetStationName) ??
     resolveStationNameFromText([
       toStringOrUndefined(raw.title),
       toStringOrUndefined(raw.description),
-      toStringOrUndefined(raw.customerName),
-      toStringOrUndefined(raw.supplierName),
+      customerName,
+      supplierName,
       toStringOrUndefined(raw.matchedQuery)
     ]);
   const sourceType = toStringOrUndefined(raw.sourceType) ?? "procurement";
@@ -96,8 +112,8 @@ function normalizeEisRawEvent(input: RawSourceEvent): NormalizedSourceEvent {
     externalId,
     title,
     description: toStringOrUndefined(raw.description),
-    customer: toStringOrUndefined(raw.customerName),
-    supplier: toStringOrUndefined(raw.supplierName),
+    customer: customerName,
+    supplier: supplierName,
     amount: toNumberOrUndefined(raw.initialPrice),
     currency: toStringOrUndefined(raw.currency) ?? "RUB",
     publishedAt,
@@ -112,13 +128,13 @@ function normalizeEisRawEvent(input: RawSourceEvent): NormalizedSourceEvent {
       matchedQuery: toStringOrUndefined(raw.matchedQuery),
       targetStationName,
       region: toStringOrUndefined(raw.region),
-      customerName: toStringOrUndefined(raw.customerName),
-      supplierName: toStringOrUndefined(raw.supplierName),
+      customerName,
+      supplierName,
       collectedAt: toStringOrUndefined(raw.collectedAt) ?? input.collectedAt,
       isNppRelated: Boolean(targetStationName),
       publishedMonth: toMonthKey(publishedAt),
-      customerNormalized: normalizeEntityName(toStringOrUndefined(raw.customerName)),
-      supplierNormalized: normalizeEntityName(toStringOrUndefined(raw.supplierName)),
+      customerNormalized: normalizeEntityName(customerName),
+      supplierNormalized: normalizeEntityName(supplierName),
       analyticsCategory: sourceType === "contract" ? "contract_execution" : "procurement_notice"
     },
     rawEvent: {
@@ -581,6 +597,32 @@ function normalizeEntityName(value: string | undefined): string | undefined {
     .trim();
 
   return normalized || undefined;
+}
+
+function sanitizeEntityName(value: string | undefined): string | undefined {
+  const cleaned = toStringOrUndefined(value)?.replace(/\s+/g, " ").trim();
+
+  if (!cleaned) {
+    return undefined;
+  }
+
+  const normalized = cleaned.toLowerCase();
+  const urlMatches = cleaned.match(/\b(?:https?:\/\/|www\.|[a-z0-9.-]+\.[a-z]{2,})/gi) ?? [];
+  const hasBoilerplateMarker = ENTITY_BOILERPLATE_MARKERS.some((marker) =>
+    normalized.includes(marker)
+  );
+
+  if (
+    cleaned.length > 220 ||
+    urlMatches.length >= 3 ||
+    hasBoilerplateMarker ||
+    normalized.includes("официальный сайт единой информационной системы") ||
+    normalized.includes("контрактной системе в сфере закупок")
+  ) {
+    return undefined;
+  }
+
+  return cleaned;
 }
 
 function toMonthKey(value: string | undefined): string | undefined {
